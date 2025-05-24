@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>呼吸流量監測</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Noto Sans TC', Arial, sans-serif; background: #f7faf7; margin: 0; }
+    .container { max-width: 700px; margin: 40px auto; background: #fff; border-radius: 16px; box-shadow: 0 2px 8px #d0e2d0; padding: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .chart-box { margin: 32px 0 16px 0; }
+    .row { display: flex; gap: 16px; }
+    .row input { flex: 1; padding: 8px; border: 1px solid #cce0cc; border-radius: 6px; }
+    .save-btn { background: #1abc68; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-size: 16px; cursor: pointer; margin-top: 16px; }
+    .connect-btn { background: #4e7fff; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 15px; cursor: pointer; margin-bottom: 12px; }
+    .status { font-size: 18px; margin: 10px 0 0 0; color: #1abc68; }
+    .lights { display: flex; gap: 16px; margin: 16px 0; }
+    .light { width: 32px; height: 32px; border-radius: 50%; background: #ccc; border: 2px solid #bbb; }
+    .light.red { background: #ff4b33; box-shadow: 0 0 8px #ff4b33; }
+    .light.green { background: #00ffe8; box-shadow: 0 0 8px #00ffe8; }
+    .light.grey { background: #ccc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 data-i18n="title">呼吸流量監測</h2>
+      <button id="langToggle" style="padding: 6px 12px; font-size: 14px;">EN</button>
+    </div>
+    <button class="connect-btn" id="connectBtn">連接裝置（名稱：USB Serial）</button>
+    <div id="status" class="status"></div>
+    <div class="lights" id="lights">
+      <div class="light grey" id="light1"></div>
+      <div class="light grey" id="light2"></div>
+      <div class="light grey" id="light3"></div>
+    </div>
+    <div class="chart-box">
+      <canvas id="flowChart" height="120"></canvas>
+    </div>
+    <div>
+      <span data-i18n="flow">流量：</span><span id="flowValue">0.00</span>
+    </div>
+    <div id="instruction" class="status"></div>
+    <div class="row" style="margin-top: 20px;">
+      <input id="patientId" placeholder="病患編號" />
+      <input id="patientName" placeholder="病患姓名" />
+    </div>
+    <button class="save-btn" onclick="saveData()">儲存資料</button>
+  </div>
+
+<script>
+const translations = {
+  "zh-TW": {
+    title: "呼吸流量監測",
+    connect: "連接裝置（名稱：USB Serial）",
+    flow: "流量：",
+    save: "儲存資料",
+    id: "病患編號",
+    name: "病患姓名",
+    statusConnected: "裝置已連接，等待資料...",
+    alerts: "你的瀏覽器不支援 Web Serial API，請使用 Chrome 或 Edge。",
+    instructions: [
+      "請放置吸入器。若燈未亮，請向左旋轉，左側第一顆指示燈應亮綠色。",
+      "請向右（逆時針）旋轉以釋放劑量，第二顆燈應亮綠色。",
+      "現在可以吸入藥劑：<br>溫和吐氣，將吸嘴含入口中用力深吸，移開吸入器並屏住呼吸約10秒。",
+      "吸入器使用完成，裝置將於10秒後關閉，屆時可儲存患者資料。如需重新使用請刷新頁面"
+    ]
+  },
+  "en": {
+    title: "Breathing Flow Monitor",
+    connect: "Connect Device (Name: USB Serial)",
+    flow: "Flow:",
+    save: "Save Data",
+    id: "Patient ID",
+    name: "Patient Name",
+    statusConnected: "Device connected. Waiting for data...",
+    alerts: "Your browser does not support the Web Serial API. Please use Chrome or Edge.",
+    instructions: [
+      "Place the inhaler. If the light is off, rotate it to the left. The first indicator on the left should turn green.",
+      "Continue rotating counterclockwise to release the dose. The second light should turn green.",
+      "You may now inhale the medication:<br>Exhale gently, place the mouthpiece in your mouth and inhale deeply. Hold your breath for about 10 seconds.",
+      "Inhaler use completed. The device will shut down in 10 seconds. You may now save patient data. Refresh the page to reuse."
+    ]
+  }
+};
+
+const lightModes = [
+  ['grey', 'grey', 'grey'],
+  ['green', 'red', 'red'],
+  ['green', 'green', 'red'],
+  ['green', 'green', 'green']
+];
+
+let instructions = [...translations["zh-TW"].instructions];
+let currentLang = "zh-TW";
+let serialPort, reader;
+let startTime = null;
+let flowRecords = [];
+let currentStep = 0;
+
+function setStep(step) {
+  currentStep = step;
+  const lights = lightModes[step];
+  for (let i = 0; i < 3; i++) {
+    const lightEl = document.getElementById('light' + (i + 1));
+    lightEl.className = 'light ' + lights[i];
+  }
+  document.getElementById('instruction').innerHTML = instructions[step];
+}
+
+function switchLanguage() {
+  currentLang = currentLang === "zh-TW" ? "en" : "zh-TW";
+  const t = translations[currentLang];
+
+  document.querySelector('[data-i18n="title"]').innerText = t.title;
+  document.getElementById('connectBtn').innerText = t.connect;
+  document.querySelector('[data-i18n="flow"]').innerText = t.flow;
+  document.getElementById('patientId').placeholder = t.id;
+  document.getElementById('patientName').placeholder = t.name;
+  document.querySelector('.save-btn').innerText = t.save;
+  document.getElementById('status').innerText = "";
+  document.getElementById('langToggle').innerText = currentLang === "zh-TW" ? "EN" : "中文";
+
+  instructions.length = 0;
+  instructions.push(...t.instructions);
+  setStep(currentStep);
+}
+
+document.getElementById("langToggle").addEventListener("click", switchLanguage);
+
+document.getElementById('connectBtn').onclick = async function () {
+  if (!('serial' in navigator)) {
+    alert(translations[currentLang].alerts);
+    return;
+  }
+  try {
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({ baudRate: 9600 });
+    document.getElementById('status').innerText = translations[currentLang].statusConnected;
+    startTime = Date.now();
+    flowRecords = [];
+    setStep(0);
+    listenSerial();
+  } catch (e) {
+    document.getElementById('status').innerText = e.message;
+  }
+};
+
+async function listenSerial() {
+  const decoder = new TextDecoderStream();
+  serialPort.readable.pipeTo(decoder.writable);
+  reader = decoder.readable.getReader();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value) handleSerialLine(value.trim());
+  }
+  reader.releaseLock();
+}
+
+function handleSerialLine(line) {
+  if (line.includes("Phase 1 complete!")) {
+    setStep(1);
+    return;
+  }
+  if (line.includes("Phase 2 complete!!")) {
+    setStep(2);
+    return;
+  }
+  if (line.includes("Phase 4 complete!!!")) {
+    setStep(3);
+    return;
+  }
+  const match = line.match(/Flow[:：]\s*([0-9.]+)/i);
+  if (match) {
+    if (currentStep < 2) setStep(2);
+    const flow = parseFloat(match[1]);
+    const now = ((Date.now() - startTime) / 1000).toFixed(2);
+    document.getElementById('flowValue').innerText = flow.toFixed(2);
+    chartData.labels.push(now);
+    chartData.datasets[0].data.push(flow);
+    if (chartData.labels.length > 60) {
+      chartData.labels.shift();
+      chartData.datasets[0].data.shift();
+    }
+    flowChart.update();
+    flowRecords.push({ time: now, flow: flow });
+  }
+}
+
+function saveData() {
+  const id = document.getElementById('patientId').value;
+  const name = document.getElementById('patientName').value;
+  let content = `ID: ${id}\nName: ${name}\nTime(s)\tFlow\n`;
+  flowRecords.forEach(r => {
+    content += `${r.time}\t${r.flow}\n`;
+  });
+  const blob = new Blob([content], { type: "text/plain" });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `flow_record_${id || 'unknown'}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+const ctx = document.getElementById('flowChart').getContext('2d');
+let chartData = {
+  labels: [],
+  datasets: [{
+    label: 'Flow',
+    data: [],
+    borderColor: '#1abc68',
+    fill: false,
+    tension: 0.3
+  }]
+};
+const flowChart = new Chart(ctx, {
+  type: 'line',
+  data: chartData,
+  options: {
+    animation: false,
+    scales: {
+      x: { title: { display: true, text: '時間 (秒)' } },
+      y: { title: { display: true, text: '流量' }, min: 0 }
+    }
+  }
+});
+
+setStep(0);
+</script>
+</body>
+</html>
