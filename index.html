@@ -6,9 +6,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: 'Noto Sans TC', Arial, sans-serif; background: #f7faf7; margin: 0; }
-    .container { max-width: 700px; margin: 40px auto; background: #fff; border-radius: 16px; box-shadow: 0 2px 8px #d0e2d0; padding: 32px; }
+    .container { max-width: 800px; margin: 40px auto; background: #fff; border-radius: 16px; box-shadow: 0 2px 8px #d0e2d0; padding: 32px; }
     .header { display: flex; justify-content: space-between; align-items: center; }
-    .chart-box { margin: 32px 0 16px 0; }
+    .chart-container { position:relative; aspect-ratio:4/1; width:100%; max-width:600px; margin:0 auto; }
     .row { display: flex; gap: 16px; }
     .row input { flex: 1; padding: 8px; border: 1px solid #cce0cc; border-radius: 6px; }
     .save-btn { background: #1abc68; color: #fff; border: none; border-radius: 6px; padding: 10px 24px; font-size: 16px; cursor: pointer; margin-top: 16px; }
@@ -19,8 +19,40 @@
     .light.red { background: #ff4b33; box-shadow: 0 0 8px #ff4b33; }
     .light.green { background: #00ffe8; box-shadow: 0 0 8px #00ffe8; }
     .light.grey { background: #ccc; }
-    .step-image { display: none; max-width: 320px; max-height: 350px; margin: 0 auto 20px auto; }
     #usbHint { margin-top:10px; padding:10px; background:#f0f8ff; border-radius:6px; color:#333; border:1px solid #b2dfdb; }
+
+    /* 圖片區塊：橫向排列、等高縮放 */
+    .image-row {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 18px;
+      margin: 12px 0 12px 0;
+      flex-wrap: wrap;
+    }
+    .imgbox {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* 這裡不再設 max-width，交由圖片本身控制 */
+    }
+    .imgbox img {
+      height: 180px;      /* 統一高度 */
+      width: auto;        /* 保持比例 */
+      object-fit: contain;
+      background: #f7faf7;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px #e0e0e0;
+      max-width: 280px;   /* 防止過寬 */
+      display: block;
+    }
+    .imgbox .caption {
+      font-size: 14px;
+      color: #888;
+      margin-top: 4px;
+      text-align: center;
+    }
+
     /* 肺部圖像區塊 */
     #lungsBox {
       display: none;
@@ -57,6 +89,11 @@
       text-shadow:0 0 6px #fff;
       pointer-events: none;
     }
+    @media (max-width: 600px) {
+      .container { padding: 8px; }
+      .image-row { flex-direction: column; align-items: center; }
+      .imgbox img { max-width: 98vw; }
+    }
   </style>
 </head>
 <body>
@@ -72,13 +109,12 @@
       <div class="light grey" id="light2"></div>
       <div class="light grey" id="light3"></div>
     </div>
-    <!-- 步驟圖片 -->
-    <div style="text-align:center;">
-      <img id="clockwiseImg" class="step-image" src="clockwise.png" alt="順時針指示">
-      <img id="counterclockwiseImg" class="step-image" src="counterclockwise.png" alt="逆時針指示">
+    <!-- 圖片區塊 -->
+    <div class="image-row" id="stepImages">
+      <!-- 動態插入圖片 -->
     </div>
-    <div class="chart-box" id="chartBox">
-      <canvas id="flowChart" height="120"></canvas>
+    <div class="chart-container" id="chartBox">
+      <canvas id="flowChart"></canvas>
     </div>
     <!-- 肺部沈積率圖像 -->
     <div id="lungsBox">
@@ -99,10 +135,30 @@
 
 <script>
 const instructions = [
-  "請放置吸入器。若燈未亮，請向左旋轉，左側第一顆指示燈應亮綠色。",
-  "請向右（逆時針）旋轉以釋放劑量，第二顆燈應亮綠色。",
-  "現在可以吸入藥劑：<br>溫和吐氣，將吸嘴含入口中用力深吸，移開吸入器並屏住呼吸約10秒。",
+  "請先取下吸入器蓋子，然後放置吸入器。若燈未亮，請向左（順時針）旋轉，左側第一顆指示燈應亮綠色。",
+  "請確定吸入器蓋子已取下，然後向右（逆時針）旋轉以釋放劑量，第二顆燈應亮綠色。",
+  "現在可以吸入藥劑：<br>請將吸嘴含入口中，用力深吸，移開吸入器並屏住呼吸約10秒。",
   "吸入器使用完成，裝置將於10秒後關閉。"
+];
+
+// 動態圖片資料（等高縮放）
+const stepImagesData = [
+  // step 0
+  [
+    { src: "lidOff.png", alt: "取下吸入器蓋子", caption: "取下吸入器蓋子" },
+    { src: "clockwise.png", alt: "順時針旋轉", caption: "順時針旋轉" }
+  ],
+  // step 1
+  [
+    { src: "lidOff.png", alt: "取下吸入器蓋子", caption: "取下吸入器蓋子" },
+    { src: "counterclockwise.png", alt: "逆時針旋轉", caption: "逆時針旋轉" }
+  ],
+  // step 2
+  [
+    { src: "breatheOutandIn.png", alt: "吐氣吸氣示意", caption: "吐氣3秒後深吸3秒" }
+  ],
+  // step 3
+  []
 ];
 
 const lightModes = [
@@ -112,7 +168,6 @@ const lightModes = [
   ['green', 'green', 'green']
 ];
 
-// Chart.js 初始化
 const ctx = document.getElementById('flowChart').getContext('2d');
 let chartData = {
   labels: [],
@@ -128,6 +183,9 @@ const flowChart = new Chart(ctx, {
   type: 'line',
   data: chartData,
   options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    aspectRatio: 3,
     animation: false,
     scales: {
       x: { title: { display: true, text: '時間 (秒)' } },
@@ -152,13 +210,27 @@ function setStep(step) {
     const lightEl = document.getElementById('light' + (i + 1));
     lightEl.className = 'light ' + lights[i];
   }
-  document.getElementById('instruction').innerHTML = instructions[step];
 
-  // 顯示/隱藏圖片與圖表
-  document.getElementById('clockwiseImg').style.display = step === 0 ? 'block' : 'none';
-  document.getElementById('counterclockwiseImg').style.display = step === 1 ? 'block' : 'none';
-  document.getElementById('chartBox').style.display = step === 3 ? 'block' : 'none';
+  // 動態插入圖片，統一高度180px，寬度自動
+  const stepImages = document.getElementById('stepImages');
+  stepImages.innerHTML = '';
+  stepImages.style.display = (stepImagesData[step].length > 0) ? 'flex' : 'none';
+  if (stepImagesData[step].length > 0) {
+    stepImagesData[step].forEach(img => {
+      const box = document.createElement('div');
+      box.className = 'imgbox';
+      box.innerHTML =
+        `<img src="${img.src}" alt="${img.alt}">
+         <div class="caption">${img.caption}</div>`;
+      stepImages.appendChild(box);
+    });
+  }
+
+  document.getElementById('chartBox').style.display = (step === 3 ? 'block' : 'none');
   document.getElementById('lungsBox').style.display = 'none';
+
+  // 指示
+  document.getElementById('instruction').innerHTML = instructions[step];
 
   // 步驟3時啟動BUDLD計算監聽
   if (step === 3) {
@@ -175,8 +247,6 @@ function setStep(step) {
         clearInterval(budldTimer);
       }
     }, 1000);
-  } else {
-    if (budldTimer) clearInterval(budldTimer);
   }
 }
 
@@ -251,7 +321,7 @@ function handleSerialLine(line) {
     document.getElementById('flowValue').innerText = flow.toFixed(2);
     chartData.labels.push(now);
     chartData.datasets[0].data.push(flow);
-    if (chartData.labels.length > 60) {
+    if (chartData.labels.length > 80) {
       chartData.labels.shift();
       chartData.datasets[0].data.shift();
     }
